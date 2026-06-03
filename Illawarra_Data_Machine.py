@@ -529,17 +529,24 @@ with st.sidebar:
         """
 1. Upload the raw Illawarra xlsx file.
 2. Check that everything looks right in the preview.
-3. Hit download, then import that csv into Salesforce and attach it to the run.
+3. Hit Download Cleaned CSV, then import that csv into Salesforce and attach it to the run.
+4. Click Download Data Checker PDF to download an easy to review PDF. Attach this to the run in salesforce!
         """
     )
     st.info("""
 For Salesforce imports  
 1. Go to Submissions  
-2. Add new records  
-3. Change the 4th box down to Site Sample Run Name  
-4. Skip 2 boxes  
-5. Change the next 3 boxes to Site name, Contact name & Sample Run Submission Name  
-6. Finally add the file and change the encoder to UTF-8
+2. Import
+3. Click submissions
+4. Click Add new records
+5. Change the 4th box down to Site Sample Run Name  
+6. Skip 2 boxes  
+7. Change the next 3 boxes to Site name, Contact name & Sample Run Submission Name  
+8. Drag the downloaded clean CSV and hit next in the bottom right corner
+9. Click next again
+10. Click start Import! 
+
+Check the sample run submission in salesforce to ensure it imported correctly, and add the checker PDF while you are there!
     """)
 
 uploaded_file = st.file_uploader("Upload Beach Watch Excel file", type=["xlsx"])
@@ -570,7 +577,7 @@ else:
         dl1, dl2 = st.columns(2)
 
         dl1.download_button(
-            label="Download cleaned CSV",
+            label="Download Cleaned CSV",
             data=csv_bytes,
             file_name=output_filename,
             mime="text/csv",
@@ -578,7 +585,7 @@ else:
         )
 
         dl2.download_button(
-            label="Download data checker PDF",
+            label="Download Data Checker PDF",
             data=checker_pdf_bytes,
             file_name=checker_pdf_filename,
             mime="application/pdf",
