@@ -529,7 +529,7 @@ with st.sidebar:
         """
 1. Upload the raw Illawarra xlsx file.
 2. Check that everything looks right in the preview.
-3. Hit Download Cleaned CSV, then import that csv into Salesforce and attach it to the run.
+3. Hit Download Cleaned CSV, then import that csv into Salesforce using the below steps.
 4. Click Download Data Checker PDF to download an easy to review PDF. Attach this to the run in salesforce!
         """
     )
