@@ -4,6 +4,14 @@ import numpy as np
 from io import BytesIO
 from openpyxl import load_workbook
 
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, LongTable, TableStyle, Paragraph, Spacer
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+
 st.set_page_config(
     page_title="Illawarra Data Machine",
     page_icon="🌊",
@@ -226,6 +234,291 @@ def get_output_filename(df):
 def dataframe_to_csv_bytes(df):
     return df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 
+def reorder_checker_df(df):
+    df = df.copy()
+
+    remove_cols = [
+        "Sample Run",
+        "Sample Run Submission",
+        "Sampler",
+        "Observation Type",
+        "Site Sample Run",
+        "Other Site Name",
+        "Status",
+    ]
+
+    existing_remove_cols = [col for col in remove_cols if col in df.columns]
+    if existing_remove_cols:
+        df = df.drop(columns=existing_remove_cols)
+
+    if "Site" in df.columns and "Enterococci Result" in df.columns:
+        cols = df.columns.tolist()
+        cols.remove("Enterococci Result")
+        site_idx = cols.index("Site")
+        cols.insert(site_idx + 1, "Enterococci Result")
+        df = df[cols]
+
+    sort_cols = [col for col in ["Site", "Sample Date", "Sample Time"] if col in df.columns]
+    if sort_cols:
+        df = df.sort_values(by=sort_cols, ascending=True, na_position="last").reset_index(drop=True)
+
+    return df
+
+
+def get_pdf_filename(df):
+    if "Sample Date" not in df.columns:
+        raise ValueError("Sample Date column not found")
+
+    sample_dates = pd.to_datetime(df["Sample Date"], errors="coerce", dayfirst=True)
+    valid_dates = sample_dates.dropna()
+
+    if valid_dates.empty:
+        raise ValueError("No valid dates found in Sample Date column")
+
+    file_date = valid_dates.min().strftime("%d %B %Y")
+    return f"{file_date} Illawarra Beaches data checker.pdf"
+
+
+def _format_pdf_value(val):
+    if pd.isna(val):
+        return ""
+    if isinstance(val, (float, np.floating)):
+        if np.isfinite(val):
+            if float(val).is_integer():
+                return str(int(val))
+            return f"{val:g}"
+        return ""
+    return str(val)
+
+
+def dataframe_to_pdf_bytes(df, title):
+    pdf_buffer = BytesIO()
+
+    page_width, page_height = landscape(A4)
+    left_margin = 10 * mm
+    right_margin = 10 * mm
+    top_margin = 12 * mm
+    bottom_margin = 12 * mm
+    usable_width = page_width - left_margin - right_margin
+
+    doc = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=landscape(A4),
+        leftMargin=left_margin,
+        rightMargin=right_margin,
+        topMargin=top_margin,
+        bottomMargin=bottom_margin,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = styles["Title"].clone("checker_title")
+    title_style.fontName = "Helvetica-Bold"
+    title_style.fontSize = 18
+    title_style.leading = 22
+    title_style.spaceAfter = 6
+
+    header_style = styles["BodyText"].clone("header_style")
+    header_style.fontName = "Helvetica-Bold"
+    header_style.fontSize = 7
+    header_style.leading = 8.5
+    header_style.textColor = colors.white
+    header_style.alignment = 1
+    header_style.splitLongWords = 0
+    header_style.wordWrap = "CJK"
+    header_style.spaceAfter = 0
+    header_style.spaceBefore = 0
+
+    body_style = styles["BodyText"].clone("body_style")
+    body_style.fontName = "Helvetica"
+    body_style.fontSize = 7.5
+    body_style.leading = 9
+    body_style.splitLongWords = 0
+    body_style.wordWrap = "CJK"
+    body_style.spaceAfter = 0
+    body_style.spaceBefore = 0
+
+    site_style = styles["BodyText"].clone("site_style")
+    site_style.fontName = "Helvetica-Bold"
+    site_style.fontSize = 12
+    site_style.leading = 14
+    site_style.splitLongWords = 0
+    site_style.wordWrap = None
+    site_style.spaceAfter = 0
+    site_style.spaceBefore = 0
+
+    entero_style = styles["BodyText"].clone("entero_style")
+    entero_style.fontName = "Helvetica-Bold"
+    entero_style.fontSize = 13
+    entero_style.leading = 15
+    entero_style.alignment = 1
+    entero_style.splitLongWords = 0
+    entero_style.wordWrap = "CJK"
+    entero_style.spaceAfter = 0
+    entero_style.spaceBefore = 0
+
+    def fmt(val):
+        if pd.isna(val):
+            return ""
+        if isinstance(val, (float, np.floating)):
+            if np.isfinite(val):
+                if float(val).is_integer():
+                    return str(int(val))
+                return f"{val:g}"
+            return ""
+        return str(val)
+
+    pdf_df = df.copy()
+
+    preferred_order = [
+        "Sample Date",
+        "Site",
+        "Enterococci Result",
+        "Sample Time",
+        "Weather",
+        "Drain Flow",
+        "Lagoon Flow",
+        "Water Temperature (℃)",
+        "Conductivity (µS/cm)",
+        "Dissolved oxygen (mg/L)",
+        "Number of swimmers",
+        "Surface scum",
+        "Leaf litter",
+        "Litter",
+        "Debris",
+        "Bluebottles",
+        "Weed",
+        "Visual Turbidity",
+        "Esky Temperature (℃)",
+        "Comments",
+        "No Enterococci Result",
+    ]
+    existing_cols = [c for c in preferred_order if c in pdf_df.columns]
+    pdf_df = pdf_df[existing_cols]
+
+    display_headers = {
+        "Sample Date": "Sample\nDate",
+        "Site": "Site",
+        "Enterococci Result": "Enterococci\nResult",
+        "Sample Time": "Sample\nTime",
+        "Weather": "Weather",
+        "Drain Flow": "Drain\nFlow",
+        "Lagoon Flow": "Lagoon\nFlow",
+        "Water Temperature (℃)": "Water\nTemp (℃)",
+        "Conductivity (µS/cm)": "Conductivity\n(µS/cm)",
+        "Dissolved oxygen (mg/L)": "Dissolved\nOxygen\n(mg/L)",
+        "Number of swimmers": "Number of\nSwimmers",
+        "Surface scum": "Surface\nScum",
+        "Leaf litter": "Leaf\nLitter",
+        "Litter": "Litter",
+        "Debris": "Debris",
+        "Bluebottles": "Blue-\nbottles",
+        "Weed": "Weed",
+        "Visual Turbidity": "Visual\nTurbidity",
+        "Esky Temperature (℃)": "Esky\nTemp (℃)",
+        "Comments": "Comments",
+        "No Enterococci Result": "No\nEnterococci\nResult",
+    }
+
+    col_width_map = {
+        "Sample Date": 20 * mm,
+        "Site": 46 * mm,
+        "Enterococci Result": 20 * mm,
+        "Sample Time": 17 * mm,
+        "Weather": 20 * mm,
+        "Drain Flow": 10 * mm,
+        "Lagoon Flow": 10 * mm,
+        "Water Temperature (℃)": 14 * mm,
+        "Conductivity (µS/cm)": 16 * mm,
+        "Dissolved oxygen (mg/L)": 14 * mm,
+        "Number of swimmers": 14 * mm,
+        "Surface scum": 10 * mm,
+        "Leaf litter": 10 * mm,
+        "Litter": 8 * mm,
+        "Debris": 8 * mm,
+        "Bluebottles": 10 * mm,
+        "Weed": 8 * mm,
+        "Visual Turbidity": 14 * mm,
+        "Esky Temperature (℃)": 14 * mm,
+        "Comments": 18 * mm,
+        "No Enterococci Result": 14 * mm,
+    }
+
+    col_widths = [col_width_map.get(col, 18 * mm) for col in pdf_df.columns]
+    total_width = sum(col_widths)
+    if total_width > usable_width:
+        scale = usable_width / total_width
+        col_widths = [w * scale for w in col_widths]
+
+    rows_per_page = 5
+    story = []
+
+    for start in range(0, len(pdf_df), rows_per_page):
+        chunk = pdf_df.iloc[start:start + rows_per_page]
+
+        if start > 0:
+            story.append(PageBreak())
+
+        story.append(Paragraph(title, title_style))
+        story.append(Spacer(1, 4 * mm))
+
+        header_row = [
+            Paragraph(display_headers.get(str(col), str(col)), header_style)
+            for col in pdf_df.columns
+        ]
+        table_data = [header_row]
+
+        for _, row in chunk.iterrows():
+            row_cells = []
+            for col, val in row.items():
+                text = fmt(val)
+
+                if col == "Site":
+                    cell = Paragraph(text, site_style)
+                elif col == "Enterococci Result":
+                    cell = Paragraph(text, entero_style)
+                else:
+                    cell = Paragraph(text, body_style)
+
+                row_cells.append(cell)
+
+            table_data.append(row_cells)
+
+        row_heights = [18 * mm] + [None] * len(chunk)
+
+        table = Table(
+            table_data,
+            colWidths=col_widths,
+            rowHeights=row_heights,
+            repeatRows=1
+        )
+
+        table_styles = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0b5cab")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("ALIGN", (0, 1), (-1, -1), "LEFT"),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#b8c7db")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f7fb")]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, 0), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 5),
+            ("TOPPADDING", (0, 1), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+        ]
+
+        if "Enterococci Result" in pdf_df.columns:
+            entero_col = pdf_df.columns.get_loc("Enterococci Result")
+            table_styles.append(("ALIGN", (entero_col, 1), (entero_col, -1), "CENTER"))
+
+        table.setStyle(TableStyle(table_styles))
+        story.append(table)
+
+    doc.build(story)
+    pdf_buffer.seek(0)
+    return pdf_buffer.getvalue()
 
 st.markdown('<div class="idm-title"> P.O.Os Illawarra Data Machine</div>', unsafe_allow_html=True)
 st.markdown('<div class="idm-small">Automatically cleans Illawarra data, ready for Salesforce Upload.</div>', unsafe_allow_html=True)
@@ -258,19 +551,37 @@ else:
         with st.spinner("Importing and cleaning file..."):
             raw_df = import_beach_watch_xlsx(uploaded_file)
             clean_df = clean_beach_watch_df(raw_df)
+
             output_filename = get_output_filename(clean_df)
             csv_bytes = dataframe_to_csv_bytes(clean_df)
+
+            checker_df = reorder_checker_df(clean_df)
+            checker_pdf_filename = get_pdf_filename(clean_df)
+            checker_pdf_bytes = dataframe_to_pdf_bytes(
+                checker_df,
+                title=checker_pdf_filename.replace(".pdf", "")
+            )
 
         col1, col2, col3 = st.columns(3)
         col1.metric("Rows", f"{len(clean_df):,}")
         col2.metric("Columns", f"{len(clean_df.columns):,}")
         col3.metric("Output file", output_filename)
 
-        st.download_button(
+        dl1, dl2 = st.columns(2)
+
+        dl1.download_button(
             label="Download cleaned CSV",
             data=csv_bytes,
             file_name=output_filename,
             mime="text/csv",
+            use_container_width=True,
+        )
+
+        dl2.download_button(
+            label="Download data checker PDF",
+            data=checker_pdf_bytes,
+            file_name=checker_pdf_filename,
+            mime="application/pdf",
             use_container_width=True,
         )
 
