@@ -548,8 +548,8 @@ For Salesforce imports
 
 Check the sample run submission in salesforce to ensure it imported correctly, and add the checker PDF while you are there!
     """)
-        with st.expander("Salesforce Import Screenshot"):
-        st.image("SF_import_tutorial.png", caption="Salesforce import field mapping", use_container_width=True)
+     with st.expander("Salesforce Import Screenshot"):
+         st.image("SF_import_tutorial.png", caption="Salesforce import field mapping", use_container_width=True)
 
 uploaded_file = st.file_uploader("Upload Beach Watch Excel file", type=["xlsx"])
 
